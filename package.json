@@ -22,8 +22,16 @@
     "node",
     "browser"
   ],
-  "author": "",
+  "author": "Akshay Kolhapure",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kolhapureakshay/whylog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kolhapureakshay/whylog/issues"
+  },
+  "homepage": "https://www.npmjs.com/package/whylog",
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/node": "^20.0.0"
