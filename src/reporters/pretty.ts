@@ -245,10 +245,11 @@ async function reportNode(error: Error, type: string, options: any, theme: Style
     // Try to read package.json version
     let pkgVersion = '';
     try {
-        if (options.projectRoot) {
-            const pkg = require(path.join(options.projectRoot, 'package.json'));
+        // Show Whylog version
+        try {
+            const pkg = require('../../package.json');
             pkgVersion = ` • ${pkg.name}@${pkg.version}`;
-        }
+        } catch(e) {}
     } catch(e) {}
 
     let osName = getEnvInfo().os;
