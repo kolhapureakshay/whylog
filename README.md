@@ -6,8 +6,9 @@
 > **A deterministic, lightweight, universal diagnostic engine.**
 > whylog intercepts runtime errors, explains the root cause in plain English, and provides actionable fixes—all with zero configuration.
 
-![NPM Version](https://img.shields.io/npm/v/whylog)
-![License](https://img.shields.io/npm/l/whylog)
+![npm version](https://img.shields.io/npm/v/whylog?style=flat-square)
+![npm downloads](https://img.shields.io/npm/dm/whylog?style=flat-square)
+![License](https://img.shields.io/npm/l/whylog?style=flat-square)
 ![Build Status](https://img.shields.io/github/actions/workflow/status/whylog/whylog/ci.yml)
 
 ---
