@@ -1,5 +1,8 @@
 # whylog
 
+📦 npm: https://www.npmjs.com/package/whylog  
+🐙 GitHub: https://github.com/kolhapureakshay/whylog
+
 > **A deterministic, lightweight, universal diagnostic engine.**
 > whylog intercepts runtime errors, explains the root cause in plain English, and provides actionable fixes—all with zero configuration.
 
@@ -237,5 +240,7 @@ We welcome new heuristics!
 3.  Run `npm run lab` to verify.
 
 ---
+
+[npm](https://www.npmjs.com/package/whylog) | [GitHub](https://github.com/kolhapureakshay/whylog)
 
 MIT © whylog

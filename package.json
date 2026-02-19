@@ -1,6 +1,6 @@
 {
   "name": "whylog",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "description": "Universal runtime diagnostic engine that explains why your code failed",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,8 +22,16 @@
     "node",
     "browser"
   ],
-  "author": "",
+  "author": "Akshay Kolhapure",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kolhapureakshay/whylog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kolhapureakshay/whylog/issues"
+  },
+  "homepage": "https://www.npmjs.com/package/whylog",
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/node": "^20.0.0"
