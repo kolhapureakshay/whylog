@@ -1,0 +1,35 @@
+{
+  "name": "whylog",
+  "version": "0.1.0",
+  "description": "Universal JS Diagnostic Engine",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "whylog": "./bin/whylog.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lab": "node scripts/lab.js",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "keywords": [
+    "diagnostic",
+    "error-handling",
+    "debugging",
+    "node",
+    "browser"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./register": "./dist/register.js"
+  }
+}
