@@ -1,0 +1,41 @@
+name: Build, Test, and Publish NPM Package
+
+on:
+  push:
+    branches:
+      - develop # Triggers the workflow when merged or pushed to the develop branch
+
+jobs:
+  build_test_publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x" # Use Node 18 for native fetch availability in testing
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Install Dependencies
+        run: npm ci # Uses package-lock.json for clean, deterministic installs. Use 'npm install' if no lockfile
+
+      - name: Build the Project
+        run: npm run build # Compiles TypeScript to the /dist folder
+
+      - name: Run Core Diagnostics Tests
+        run: npm run lab # Executes test-lab/lab.js to verify heuristics and mappers
+
+      - name: Run AI Integration Tests
+        run: npm run test:ai # Safely auto-skips missing API keys while validating logic
+        env:
+          # Optional: You can add repository secrets here to test actual remote APIs
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          # Required: You must add an NPM Access Token in your GitHub Repository Secrets
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
