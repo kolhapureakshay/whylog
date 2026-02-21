@@ -1,6 +1,11 @@
 import { attachListeners } from '../platform/index';
 import { bus } from './bus';
 import { LogThrottler } from './throttle';
+import { HeuristicMapper } from './heuristics';
+import { report } from '../reporters/pretty';
+import { getEnvInfo } from '../platform/env';
+import { initAsyncTracker } from '../plugins/async-tracker';
+import { initBrowserTracker } from '../plugins/browser-tracker';
 import { config, WhylogOptions } from './config';
 
 const throttler = new LogThrottler();
@@ -14,6 +19,23 @@ export function init(options?: WhylogOptions) {
   }
 
   // 2. Attach handlers only once
+  // Track async hook configuration
+  const env = getEnvInfo();
+  if (options?.asyncHooks && env.runtime === 'Node') {
+      initAsyncTracker(true);
+  }
+
+  // Track browser tracing
+  if (options?.browserTracker && env.runtime === 'Browser') {
+      initBrowserTracker(true);
+  }
+
+  // Fetch remote config if requested
+  if (options?.remoteConfigUrl) {
+      // Async fire and forget
+      config.loadRemoteConfig();
+  }
+
   if (isHandlersAttached) {
       if (config.get().debug) console.log('[whylog] Init called but handlers already attached.');
       return;

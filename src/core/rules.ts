@@ -203,6 +203,58 @@ export const rules: Rule[] = [
       'Check firewall settings.'
     ]
   },
+  {
+    id: 'net-econnreset',
+    title: 'Connection Reset',
+    category: 'Network Error',
+    priority: 60,
+    pattern: (err) => err.code === 'ECONNRESET',
+    explanation: () => 'The remote server abruptly closed the connection. This often happens if the server crashes or a firewall drops the packet.',
+    fix: () => [
+      'Implement retry logic for the request.',
+      'Check if the remote service is healthy and not restarting.',
+      'Verify if a load balancer or proxy is terminating idle connections.'
+    ]
+  },
+  {
+    id: 'net-epipe',
+    title: 'Broken Pipe',
+    category: 'Network Error',
+    priority: 60,
+    pattern: (err) => err.code === 'EPIPE',
+    explanation: () => 'The application tried to write to a pipe/socket that was already closed by the other end.',
+    fix: () => [
+      'Ensure the client hasn\'t disconnected before sending the response.',
+      'Handle streams properly by listening to the `error` event.',
+      'Avoid sending data after calling `.end()`.'
+    ]
+  },
+  {
+    id: 'fs-enospc',
+    title: 'Disk Full',
+    category: 'FileSystem Error',
+    priority: 95, // High priority because it's a critical system error
+    pattern: (err) => err.code === 'ENOSPC',
+    explanation: () => 'There is no space left on the device (disk full). The system cannot write any more data.',
+    fix: () => [
+      'Free up disk space on the server running this application.',
+      'Check for runaway log files or temporary files.',
+      'Increase the storage volume size.'
+    ]
+  },
+  {
+    id: 'browser-cors',
+    title: 'CORS Error',
+    category: 'Network Error',
+    priority: 85,
+    pattern: (err) => typeof window !== 'undefined' && err.name === 'TypeError' && err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')),
+    explanation: () => 'A network request failed in the browser. This is very commonly caused by a CORS (Cross-Origin Resource Sharing) policy blocking the request, or the backend server being unreachable.',
+    fix: () => [
+      'Check the browser network tab to confirm if it\'s a CORS issue.',
+      'Ensure the backend server is configured to send `Access-Control-Allow-Origin` headers.',
+      'Verify the backend server is actually running and accessible.'
+    ]
+  },
   
   // --- LOGIC ---
   {
