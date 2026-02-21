@@ -1,5 +1,7 @@
 import { Context, globalContext } from './context';
 import { StyleOptions } from '../reporters/style';
+import { Rule } from './rules';
+import { makeRequest } from './fetch';
 
 export interface WhylogOptions extends StyleOptions {
   mode?: 'auto' | 'dev' | 'prod';
@@ -21,6 +23,28 @@ export interface WhylogOptions extends StyleOptions {
   };
   safeReporter?: boolean; // Wrap reporter in try/catch to prevent crashes
   debug?: boolean; // Enable internal debug logging
+  transports?: Array<(reportData: any) => void | Promise<void>>; // Pluggable export destinations
+  customRules?: Rule[]; // Custom user-defined heuristics
+  breadcrumbs?: {
+      enabled: boolean;
+      maxItems?: number;
+  };
+  masking?: {
+      secrets: string[];
+      maskString?: string;
+  };
+  ai?: {
+      enabled: boolean;
+      provider?: 'openai' | 'custom' | 'gemini' | 'anthropic' | 'grok';
+      apiKey?: string;
+      endpoint?: string;
+      model?: string;
+      headers?: Record<string, string>;
+  };
+  asyncHooks?: boolean; // Enable async stack stitching (Node.js)
+  browserTracker?: boolean; // Enable DOM click/fetch tracking (Browser)
+  overlay?: boolean; // Show visual error overlay (Browser)
+  remoteConfigUrl?: string; // Auto-fetch config overrides
 }
 
 export class ConfigManager {
@@ -44,7 +68,19 @@ export class ConfigManager {
         blockInDev: true,
         delayMs: 500
     },
-    safeReporter: true
+    safeReporter: true,
+    customRules: [],
+    breadcrumbs: {
+        enabled: true,
+        maxItems: 10
+    },
+    masking: {
+        secrets: ['password', 'token', 'authorization', 'secret', 'apikey'],
+        maskString: '[REDACTED]'
+    },
+    ai: {
+        enabled: false
+    }
   };
 
   private constructor() {}
@@ -55,6 +91,17 @@ export class ConfigManager {
       ConfigManager.instance.loadEnv();
     }
     return ConfigManager.instance;
+  }
+
+  async loadRemoteConfig() {
+      if (!this.options.remoteConfigUrl) return;
+      try {
+          const res = await makeRequest(this.options.remoteConfigUrl);
+          if (res.ok) {
+              const remote = await res.json();
+              this.update(remote);
+          }
+      } catch (e) {}
   }
 
   private loadEnv() {

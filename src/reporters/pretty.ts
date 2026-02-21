@@ -3,14 +3,38 @@ import { HeuristicMapper } from '../core/heuristics';
 import { getEnvInfo } from '../platform/env';
 import { getStyle, Style, StyleOptions } from './style';
 import { config, ConfigManager } from '../core/config'; // Import config singleton
+import { BreadcrumbTracker } from '../core/breadcrumbs';
+import { explainWithAI } from '../plugins/ai';
+import { getAsyncStack } from '../plugins/async-tracker';
+import { showOverlay } from './overlay';
 import * as path from 'path';
+
+function maskData(data: any, secrets: string[], maskStr: string): any {
+    if (!data) return data;
+    if (typeof data !== 'object') return data;
+    
+    if (Array.isArray(data)) {
+        return data.map(item => maskData(item, secrets, maskStr));
+    }
+
+    const masked: any = {};
+    for (const key of Object.keys(data)) {
+        const lowerKey = key.toLowerCase();
+        if (secrets.some(s => lowerKey.includes(s.toLowerCase()))) {
+            masked[key] = maskStr;
+        } else {
+            masked[key] = typeof data[key] === 'object' ? maskData(data[key], secrets, maskStr) : data[key];
+        }
+    }
+    return masked;
+}
 
 // Deprecate internal globalOptions in favor of ConfigManager
 export function configure(options: any) {
   ConfigManager.getInstance().update(options);
 }
 
-export async function report(error: Error, type: string) {
+export async function report(error: Error, type: string, context?: Record<string, any>) {
   const options = config.get(); // Use centralized config
   const env = getEnvInfo();
   const isProduction = ConfigManager.getInstance().isProduction;
@@ -21,9 +45,74 @@ export async function report(error: Error, type: string) {
       format = isProduction ? 'json' : 'pretty';
   }
 
+  // Fetch initial insight
+  let insight = HeuristicMapper.getInsight(error, type);
+
+  // 1. Feature: AI Explanations
+  if (insight.type === 'Error' || options.ai?.enabled) {
+      // If we don't have a specific heuristic, or AI is forced
+      insight = await explainWithAI(error, insight);
+  }
+
+  // 2. Feature: Breadcrumbs
+  let activeBreadcrumbs = undefined;
+  if (options.breadcrumbs?.enabled) {
+      activeBreadcrumbs = BreadcrumbTracker.get();
+  }
+
+  // 3. Feature: Data Masking / Scrubbing
+  let safeContext = context;
+  if (context && options.masking && options.masking.secrets) {
+      safeContext = maskData(context, options.masking.secrets, options.masking.maskString || '[REDACTED]');
+  }
+
+  const formatPayload = () => {
+      let stack = error.stack || '';
+      
+      // Feature: Async Stack Stitching
+      if (options.asyncHooks && env.runtime === 'Node') {
+          const asyncPart = getAsyncStack();
+          if (asyncPart && !stack.includes('async boundary')) {
+              stack += '\n    --- async boundary ---\n' + asyncPart;
+          }
+      }
+
+      const frames = parseStack(stack);
+      const fingerprint = generateFingerprint(error, frames[0]);
+      
+      return {
+          timestamp: new Date().toISOString(),
+          level: type === 'warning' ? 'warning' : 'error',
+          severity: type === 'warning' ? 'WARNING' : (isProduction ? 'CRITICAL' : 'ERROR'),
+          category: insight.type,
+          message: error.message,
+          explanation: insight.why,
+          heuristicId: insight.type,
+          fingerprint: fingerprint,
+          fix: insight.fix,
+          location: frames[0] ? `${frames[0].file}:${frames[0].line}:${frames[0].col}` : null,
+          stack: (options.simple || isProduction) ? undefined : frames.map((f: any) => `${f.fn} (${f.file}:${f.line})`),
+          environment: (options.simple || isProduction) ? undefined : {
+              ...env,
+              node: process.version
+          },
+          context: safeContext,
+          breadcrumbs: activeBreadcrumbs
+      };
+  };
+
+  const payload = formatPayload();
+
+  // Invoke pluggable transports (e.g., Slack, Datadog)
+  if (options.transports && options.transports.length > 0) {
+      options.transports.forEach(transport => {
+          try { transport(payload); } catch (e) { /* ignore transport errors */ }
+      });
+  }
+
   // JSON or Production Mode (Fast Path)
   if (format === 'json') {
-      reportJson(error, type, options, env, isProduction);
+      console.log(JSON.stringify(payload));
       return;
   }
 
@@ -32,50 +121,32 @@ export async function report(error: Error, type: string) {
 
   if (env.runtime === 'Node') {
     // Cast format back for reportNode specific logic if needed, or pass derived 'isPlain'
-    await reportNode(error, type, { ...options, format } as any, styles, isProduction);
+    await reportNode(error, type, { ...options, format } as any, styles, isProduction, safeContext, payload);
   } else {
-    reportBrowser(error, type, options, styles);
+    reportBrowser(error, type, options, styles, safeContext, payload);
   }
 }
 
-function reportJson(error: Error, type: string, options: any, env: any, isProd: boolean) {
-  const frames = parseStack(error.stack || '');
-  const insight = HeuristicMapper.getInsight(error, type);
-  
-  const fingerprint = generateFingerprint(error, frames[0]);
-
-  const output = {
-      timestamp: new Date().toISOString(),
-      level: type === 'warning' ? 'warning' : 'error',
-      severity: type === 'warning' ? 'WARNING' : (isProd ? 'CRITICAL' : 'ERROR'),
-      category: insight.type,
-      message: error.message,
-      explanation: insight.why,
-      heuristicId: insight.type,
-      fingerprint: fingerprint,
-      fix: insight.fix,
-      location: frames[0] ? `${frames[0].file}:${frames[0].line}:${frames[0].col}` : null,
-      stack: (options.simple || isProd) ? undefined : frames.map(f => `${f.fn} (${f.file}:${f.line})`),
-      environment: (options.simple || isProd) ? undefined : {
-          ...env,
-          node: process.version
-      }
-  };
-
-  console.log(JSON.stringify(output));
-}
+// Removed reportJson as payload creation is now centralized in report()
 
 // ... imports ...
 
-async function reportNode(error: Error, type: string, options: any, theme: Style, isProd: boolean) {
-  const allFrames = parseStack(error.stack || '');
+async function reportNode(error: Error, type: string, options: any, theme: Style, isProd: boolean, context?: Record<string, any>, payload?: any) {
+  let stack = error.stack || '';
+  if (options.asyncHooks) {
+      const asyncPart = getAsyncStack();
+      if (asyncPart && !stack.includes('async boundary')) stack += '\n    --- async boundary ---\n' + asyncPart;
+  }
+  
+  const allFrames = parseStack(stack);
   
   // 1. Find the first user frame (not internal/node)
   // If all are internal (e.g. core crash), fallback to 0
-  let topFrame = allFrames.find(f => !f.isInternal);
+  let topFrame = allFrames.find((f: any) => !f.isInternal);
   if (!topFrame) topFrame = allFrames[0];
 
-  const insight = HeuristicMapper.getInsight(error, type);
+  // Map from unified payload rather than re-computing
+  const insight = { type: payload.category, why: payload.explanation, fix: payload.fix };
   const isPlain = options.format === 'plain';
 
   // Dynamic require to avoid bundling fs
@@ -151,6 +222,27 @@ async function reportNode(error: Error, type: string, options: any, theme: Style
   console.log(`\n ${theme.bold(whyIcon)}`);
   console.log(` ${theme.main(insight.why)}`);
 
+  // 3b. 🗂 CONTEXT (If present)
+  if (context && Object.keys(context).length > 0) {
+      const ctxIcon = isPlain ? 'CONTEXT:' : '🗂 Context:';
+      console.log(`\n ${theme.bold(ctxIcon)}`);
+      Object.entries(context).forEach(([key, val]) => {
+          if (val !== undefined) {
+             const valStr = typeof val === 'object' ? JSON.stringify(val) : String(val);
+             console.log(` • ${theme.dim(key)}: ${theme.main(valStr)}`);
+          }
+      });
+  }
+
+  // 3c. 🍞 BREADCRUMBS
+  if (payload.breadcrumbs && payload.breadcrumbs.length > 0) {
+      const bcIcon = isPlain ? 'BREADCRUMBS:' : '🍞 Trail:';
+      console.log(`\n ${theme.bold(bcIcon)}`);
+      payload.breadcrumbs.forEach((bc: any) => {
+          console.log(` • ${theme.dim(bc.timestamp)} ${theme.bold(bc.category || 'log')} - ${theme.main(bc.message)}`);
+      });
+  }
+
   // 4. 📄 SOURCE SNIPPET (Smart Gutter)
   if (topFrame && fs && fs.existsSync(topFrame.file)) {
     try {
@@ -187,7 +279,7 @@ async function reportNode(error: Error, type: string, options: any, theme: Style
   if (insight.fix.length > 0) {
       const fixIcon = isPlain ? 'HOW TO FIX:' : '💡 How to Fix:';
       console.log(`\n ${theme.bold(fixIcon)}`);
-      insight.fix.forEach(step => console.log(` • ${theme.main(step)}`));
+      insight.fix.forEach((step: string) => console.log(` • ${theme.main(step)}`));
   }
 
   // 6. 🪵 STACK (Collapsed & Filtered)
@@ -269,12 +361,17 @@ async function reportNode(error: Error, type: string, options: any, theme: Style
   console.log('\n');
 }
 
-function reportBrowser(error: Error, type: string, options: any, theme: Style) {
+function reportBrowser(error: Error, type: string, options: any, theme: Style, context?: Record<string, any>, payload?: any) {
   // Browser implementation remains mostly same, maybe update for config if needed
   // ... (previous browser logic)
   // For brevity, using previous implementation but with config options check if needed
   const insight = HeuristicMapper.getInsight(error, type);
   const isPlain = options.format === 'plain';
+  
+  // Feature: Inject visual overlay in DOM
+  if (options.overlay && typeof document !== 'undefined') {
+      showOverlay(error, insight, payload || {});
+  }
   
   if (isPlain) {
       console.error(`[${insight.type.toUpperCase()}] ${error.message}`);

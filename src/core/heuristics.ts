@@ -9,8 +9,10 @@ export interface InsightCard {
 
 export class HeuristicMapper {
   static getInsight(error: any, eventType?: string): InsightCard {
-    // Sort rules by priority (descending)
-    const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    const customRules = require('./config').config.get().customRules || [];
+    
+    // Merge and sort rules by priority (descending)
+    const sortedRules = [...customRules, ...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     // Find first matching rule
     const match = sortedRules.find(rule => rule.pattern(error, eventType));
